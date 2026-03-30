@@ -11,7 +11,7 @@ pnpm install
 
 **2. Build**
 ```bash
-npm run build
+pnpm run build
 ```
 
 **3. Configure**
@@ -29,7 +29,7 @@ Edit `~/.ai-digest-config.json` and set your vault path:
 
 **4. Test run**
 ```bash
-npm run start
+pnpm run start
 ```
 
 ## Install as daily job (macOS)
