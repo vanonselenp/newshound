@@ -1,0 +1,5 @@
+{
+  "vaultPath": "/Users/yourname/Documents/ObsidianVault",
+  "stateFilePath": "~/.ai-digest-state.json",
+  "lookbackDays": 3
+}
