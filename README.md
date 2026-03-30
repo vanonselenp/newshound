@@ -2,6 +2,13 @@
 
 Daily AI tooling digest. Aggregates content from curated blogs, Hacker News, and Reddit, filters for practical signal via Claude, and writes a markdown digest to your Obsidian vault.
 
+## Prerequisites
+
+- **Node.js 22** — install via [nvm](https://github.com/nvm-sh/nvm): `nvm install && nvm use`
+- **pnpm** — `npm install -g pnpm`
+- **Claude Code CLI** — must be installed and authenticated (`claude` in your `PATH`)
+- **Obsidian** — digests are written as markdown files to your vault
+
 ## Setup
 
 **1. Install dependencies**
