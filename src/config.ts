@@ -18,8 +18,8 @@ export type Config = {
 
 export const DEFAULT_SOURCES: Source[] = [
   // Curated blogs — go straight to signal evaluation
-  { name: 'Anthropic Blog', type: 'rss', url: 'https://www.anthropic.com/rss.xml', tier: 'curated' },
-  { name: 'OpenAI Blog', type: 'rss', url: 'https://openai.com/news/rss/', tier: 'curated' },
+  // Anthropic does not publish an RSS feed — removed until they do
+  { name: 'OpenAI Blog', type: 'rss', url: 'https://openai.com/news/rss.xml', tier: 'curated' },
   { name: 'Cursor Changelog', type: 'rss', url: 'https://changelog.cursor.sh/rss', tier: 'curated' },
   { name: 'Vercel Blog', type: 'atom', url: 'https://vercel.com/atom', tier: 'curated' },
   { name: "Simon Willison's Blog", type: 'atom', url: 'https://simonwillison.net/atom/entries/', tier: 'curated' },

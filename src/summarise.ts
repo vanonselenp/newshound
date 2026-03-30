@@ -56,8 +56,8 @@ ${worthKnowingList || '(none)'}
 
 INSTRUCTIONS:
 1. Select 2-3 items for "readInFull" — ones that most reward reading the original beyond the summary. Provide one sentence on WHY to read in full.
-2. For all high signal items, write 2-3 sentence summaries explaining what it is and why it matters practically. End each with a "takeaway" (one sentence starting with what the reader could do).
-3. For worth knowing items, write a single sentence summary.
+2. For high signal items, include no more than 5 — focus on the most relevant and practically useful. Write 2-3 sentence summaries explaining what it is and why it matters. End each with a "takeaway" (one sentence starting with what the reader could do).
+3. For worth knowing items, write a single sentence summary. Include no more than 5 — pick the most noteworthy if there are more.
 4. Select tags from this FIXED LIST ONLY — do not invent new tags: ${TAG_VOCABULARY.join(', ')}
 5. If any of today's items are DIRECTLY related to a recent digest (follow-up release, contrasting take, or evolution of the same topic — not just overlapping tags), include that digest date as an Obsidian wikilink in "related". Strong direct connection only, not tag overlap.
 
@@ -118,8 +118,8 @@ export async function summariseItems(
 
   return {
     readInFull: parseSummaryItems(obj['readInFull']),
-    highSignal: parseSummaryItems(obj['highSignal']),
-    worthKnowing: parseSummaryItems(obj['worthKnowing']),
+    highSignal: parseSummaryItems(obj['highSignal']).slice(0, 5),
+    worthKnowing: parseSummaryItems(obj['worthKnowing']).slice(0, 5),
     tags: Array.isArray(obj['tags']) ? (obj['tags'] as string[]).filter((t) => TAG_VOCABULARY.includes(t)) : [],
     related: Array.isArray(obj['related']) ? (obj['related'] as string[]) : [],
     sourcesSurveyed: totalScanned,
