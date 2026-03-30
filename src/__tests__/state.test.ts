@@ -33,6 +33,14 @@ describe('readLastRun', () => {
     expect(after - result.getTime()).toBeLessThanOrEqual(expected + 100);
   });
 
+  it('creates state file with default date when file does not exist', async () => {
+    await readLastRun(stateFile, 3);
+    const raw = await import('fs/promises').then((m) => m.readFile(stateFile, 'utf-8'));
+    const parsed = JSON.parse(raw) as { lastRun: string };
+    expect(typeof parsed.lastRun).toBe('string');
+    expect(new Date(parsed.lastRun).getTime()).toBeGreaterThan(0);
+  });
+
   it('respects lookbackDays parameter', async () => {
     const before = Date.now();
     const result = await readLastRun(stateFile, 7);

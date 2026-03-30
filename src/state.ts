@@ -26,7 +26,9 @@ export async function readLastRun(stateFilePath: string, lookbackDays: number): 
     return lastRun;
   } catch (err) {
     if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
-      return new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
+      const defaultDate = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
+      await writeFile(stateFilePath, JSON.stringify({ lastRun: defaultDate.toISOString() }), 'utf-8');
+      return defaultDate;
     }
     throw err;
   }
