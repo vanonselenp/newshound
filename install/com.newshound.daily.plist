@@ -7,12 +7,18 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/local/bin/node</string>
+    <string>/Users/REPLACE_WITH_YOUR_USERNAME/.nvm/versions/node/v22.18.0/bin/node</string>
     <string>/Users/REPLACE_WITH_YOUR_USERNAME/workspace/newshound/dist/index.js</string>
   </array>
 
   <key>WorkingDirectory</key>
   <string>/Users/REPLACE_WITH_YOUR_USERNAME/workspace/newshound</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/Users/REPLACE_WITH_YOUR_USERNAME/.nvm/versions/node/v22.18.0/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
 
   <key>StartCalendarInterval</key>
   <dict>
