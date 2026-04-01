@@ -1,7 +1,5 @@
-import { readFile } from 'fs/promises';
 import { homedir } from 'os';
-import { join } from 'path';
-import { type Config } from './config';
+import { loadConfig, CONFIG_DIR } from './config-loader';
 import { createClaudeAdapter } from './claude';
 import { readLastRun, writeLastRun } from './state';
 import { fetchAllSources } from './fetchers/orchestrator';
@@ -13,39 +11,28 @@ function log(digestId: string, msg: string): void {
   process.stderr.write(`[newshound:${digestId}] ${msg}\n`);
 }
 
-async function loadConfig(): Promise<Config> {
-  const configPath = join(homedir(), '.ai-digest-config.json');
-  let raw: string;
+async function main(): Promise<void> {
+  let config;
   try {
-    raw = await readFile(configPath, 'utf-8');
-  } catch {
+    config = await loadConfig();
+  } catch (err) {
     process.stderr.write(
-      `[newshound] Config file not found at ${configPath}\n` +
-        `Copy config.example.json to ${configPath} and fill in your vault path.\n`,
+      `[newshound] ${err instanceof Error ? err.message : String(err)}\n` +
+        `Copy config.example/ to ${CONFIG_DIR} and fill in your vault path.\n`,
     );
     process.exit(1);
   }
-  try {
-    return JSON.parse(raw) as Config;
-  } catch {
-    process.stderr.write(`[newshound] Config file at ${configPath} contains invalid JSON\n`);
-    process.exit(1);
-  }
-}
 
-async function main(): Promise<void> {
-  const config = await loadConfig();
   const claude = createClaudeAdapter();
 
   for (const digest of config.digests) {
-    // Resolve ~ in stateFilePath
     const stateFilePath = digest.stateFilePath.replace(/^~/, homedir());
     const lookbackDays = digest.lookbackDays;
 
     log(digest.id, 'Reading last run timestamp…');
     const since = await readLastRun(stateFilePath, lookbackDays);
     const now = new Date();
-    const isCatchUp = now.getTime() - since.getTime() > 26 * 60 * 60 * 1000; // >26h means catch-up
+    const isCatchUp = now.getTime() - since.getTime() > 26 * 60 * 60 * 1000;
     log(digest.id, `Fetching content since ${since.toISOString()}${isCatchUp ? ' (catch-up run)' : ''}…`);
 
     log(digest.id, 'Fetching sources…');

@@ -1,0 +1,43 @@
+name: Job Digest
+outputDir: Job-Digest
+lookbackDays: 1
+
+sources:
+  - name: Remote.co Engineering
+    type: rss
+    url: https://remote.co/remote-jobs/developer/feed/
+    tier: curated
+
+filterCriteria:
+  purpose: software engineering job postings matching the user profile
+  profile: >
+    EDIT THIS: describe your experience level, technical skills, preferred stack,
+    work arrangement (remote/hybrid), location constraints, company stage
+    preferences, and any deal-breakers.
+  highSignal:
+    - Strong match on required technical skills listed in the user profile
+    - Appropriate seniority level for the user's experience
+    - Company type and stage align with user preferences
+    - Remote/location arrangement matches user requirement
+  worthKnowing:
+    - Partial skill match with interesting other attributes
+    - Slightly off on level but otherwise compelling
+  lowSignal:
+    - Wrong seniority level — over or under-qualified by more than one level
+    - Skills mismatch — missing more than half of required skills
+    - Location or work arrangement incompatible with user preferences
+    - Company type explicitly excluded in user profile
+
+tags:
+  - frontend
+  - backend
+  - full-stack
+  - remote
+  - hybrid
+  - senior
+  - staff
+  - startup
+  - scale-up
+  - enterprise
+  - contract
+  - full-time

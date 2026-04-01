@@ -19,16 +19,22 @@ export type FilterCriteria = {
   profile?: string;
 };
 
-export type DigestConfig = {
-  id: string;
+// Shape of a digest YAML file — id is derived from the filename, stateFilePath defaults to ~/.newshound/state/{id}.json
+export type DigestFileConfig = {
   name: string;
   outputDir: string;
-  stateFilePath: string;
+  stateFilePath?: string;
   lookbackDays: number;
   sources: Source[];
   filterCriteria: FilterCriteria;
   tags: string[];
   summarisationContext?: string;
+};
+
+// Runtime shape after id and stateFilePath are resolved by the config loader
+export type DigestConfig = DigestFileConfig & {
+  id: string;
+  stateFilePath: string;
 };
 
 export type Config = {

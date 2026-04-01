@@ -23,18 +23,18 @@ pnpm run build
 
 **3. Configure**
 ```bash
-cp config.example.json ~/.ai-digest-config.json
+cp -r config.example ~/.newshound
 ```
-Edit `~/.ai-digest-config.json`. The top-level shape is:
-```json
-{
-  "vaultPath": "/path/to/your/obsidian/vault",
-  "digests": [ ... ]
-}
+Edit `~/.newshound/config.yaml` and set your vault path:
+```yaml
+vaultPath: /path/to/your/obsidian/vault
 ```
-Each entry in `digests` is one digest type. `config.example.json` ships with two: an AI tooling digest and a job postings digest. At minimum, update `vaultPath` and the `stateFilePath` values. For the job digest, fill in the `profile` field under `filterCriteria` with your background and preferences so Claude can match postings against them.
 
-To add a new digest type, append another entry to the `digests` array — no code changes required.
+Each digest is a separate YAML file in `~/.newshound/digests/`. The filename becomes the digest id (e.g. `ai-tools.yaml` → id `ai-tools`). State files default to `~/.newshound/state/<id>.json` — no configuration needed.
+
+`config.example/digests/` ships with two digests: an AI tooling digest and a job postings digest. For the job digest, fill in the `profile` field under `filterCriteria` with your background and preferences.
+
+To add a new digest type, drop a new YAML file in `~/.newshound/digests/` — no code changes required.
 
 **4. Test run**
 ```bash
@@ -43,7 +43,7 @@ pnpm run start
 
 ## Install as daily job (macOS)
 
-Edit `install/com.newshound.daily.plist` and replace `REPLACE_WITH_YOUR_USERNAME` with your macOS username, and update the path to match your install location.
+Edit `install/com.newshound.daily.plist`, replace `REPLACE_WITH_YOUR_USERNAME` with your macOS username, and update the path to match your install location.
 
 ```bash
 cp install/com.newshound.daily.plist ~/Library/LaunchAgents/
