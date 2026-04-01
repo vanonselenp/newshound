@@ -13,6 +13,7 @@ import { summariseItems } from '../summarise';
 import { renderDigest, readRecentDigests, writeDigest } from '../vault';
 import { fetchAllSources } from '../fetchers/orchestrator';
 import type { FeedItem } from '../types';
+import type { DigestConfig, FilterCriteria } from '../config';
 
 function makeItem(title: string): FeedItem {
   return {
@@ -24,6 +25,23 @@ function makeItem(title: string): FeedItem {
     tier: 'curated',
   };
 }
+
+const TEST_CRITERIA: FilterCriteria = {
+  purpose: 'AI tooling and development content for software practitioners',
+  highSignal: ['New tool releases with concrete capabilities'],
+  lowSignal: ['Hype and speculation'],
+};
+
+const TEST_DIGEST_CONFIG: DigestConfig = {
+  id: 'ai-tools',
+  name: 'AI Digest',
+  outputDir: 'AI-Digest',
+  stateFilePath: '~/.ai-digest-state.json',
+  lookbackDays: 3,
+  sources: [{ name: 'Test Feed', type: 'rss', url: 'https://example.com/rss', tier: 'curated' }],
+  filterCriteria: TEST_CRITERIA,
+  tags: ['tooling', 'models', 'workflows'],
+};
 
 const FILTER_RESPONSE = JSON.stringify([
   { index: 0, signal: 'high' },
@@ -74,22 +92,22 @@ describe('Integration: happy path', () => {
     expect(warnings).toHaveLength(0);
     expect(items).toHaveLength(2);
 
-    const filterResult = await filterItems(items, mockClaude);
+    const filterResult = await filterItems(items, TEST_CRITERIA, mockClaude);
     expect(filterResult.highSignal).toHaveLength(1);
     expect(filterResult.worthKnowing).toHaveLength(1);
 
-    const recentDigests = await readRecentDigests(vaultPath, 14);
+    const recentDigests = await readRecentDigests(vaultPath, 'AI-Digest', 14);
     expect(recentDigests).toHaveLength(0);
 
-    const digestContent = await summariseItems(filterResult, items.length, recentDigests, mockClaude);
+    const digestContent = await summariseItems(filterResult, items.length, recentDigests, TEST_DIGEST_CONFIG, mockClaude);
     expect(digestContent.highSignal).toHaveLength(1);
     expect(digestContent.tags).toContain('tooling');
 
-    const markdown = renderDigest(digestContent, now);
+    const markdown = renderDigest(digestContent, now, 'AI Digest', 'ai-tools');
     expect(markdown).toContain('# AI Digest — 2026-03-30');
     expect(markdown).toContain('sources_scanned: 2');
 
-    const outputPath = await writeDigest(vaultPath, now, markdown);
+    const outputPath = await writeDigest(vaultPath, 'AI-Digest', now, markdown);
     expect(existsSync(outputPath)).toBe(true);
     const written = await readFile(outputPath, 'utf-8');
     expect(written).toContain('# AI Digest — 2026-03-30');
@@ -131,7 +149,7 @@ describe('Integration: catch-up scenario', () => {
     };
 
     const catchUpSince = isCatchUp ? since : undefined;
-    const markdown = renderDigest(digestContent, now, catchUpSince);
+    const markdown = renderDigest(digestContent, now, 'AI Digest', 'ai-tools', catchUpSince);
 
     expect(markdown).toContain('period: 2026-03-25 to 2026-03-30');
     expect(markdown).toContain('*Nothing cleared the signal threshold today.*');

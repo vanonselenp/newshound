@@ -1,25 +1,12 @@
 import type { ClaudeAdapter } from './claude';
 import type { DigestContent, FilterResult, SummaryItem } from './types';
-
-const TAG_VOCABULARY = [
-  'tooling',
-  'models',
-  'workflows',
-  'pricing',
-  'apis',
-  'coding-agents',
-  'prompting',
-  'infrastructure',
-  'open-source',
-  'releases',
-  'ai-methodology',
-  'team-practices',
-];
+import type { DigestConfig } from './config';
 
 function buildSummarisePrompt(
   filterResult: FilterResult,
   totalScanned: number,
   recentDigests: string[],
+  digestConfig: DigestConfig,
 ): string {
   const highSignalList = filterResult.highSignal
     .map(
@@ -44,8 +31,14 @@ ${item.description.slice(0, 200)}`,
       ? `RECENT DIGEST CONTEXT (for detecting related links):\n${recentDigests.join('\n---\n')}`
       : 'RECENT DIGEST CONTEXT: None available.';
 
-  return `You are writing a daily AI Digest for a staff engineer who wants practical, actionable AI tooling updates.
+  const profileSection = digestConfig.filterCriteria.profile
+    ? `\nUSER PROFILE:\n${digestConfig.filterCriteria.profile}\n`
+    : '';
 
+  const extraContext = digestConfig.summarisationContext ? `\n${digestConfig.summarisationContext}` : '';
+
+  return `You are writing a daily ${digestConfig.name} for a practitioner who wants practical, actionable updates.
+${profileSection}
 ${recentContext}
 
 HIGH SIGNAL ITEMS (write full summaries):
@@ -58,15 +51,15 @@ INSTRUCTIONS:
 1. Select 2-3 items for "readInFull" — ones that most reward reading the original beyond the summary. Provide one sentence on WHY to read in full.
 2. For high signal items, include no more than 5 — focus on the most relevant and practically useful. Write 2-3 sentence summaries explaining what it is and why it matters. End each with a "takeaway" (one sentence starting with what the reader could do).
 3. For worth knowing items, write a single sentence summary. Include no more than 5 — pick the most noteworthy if there are more.
-4. Select tags from this FIXED LIST ONLY — do not invent new tags: ${TAG_VOCABULARY.join(', ')}
+4. Select tags from this FIXED LIST ONLY — do not invent new tags: ${digestConfig.tags.join(', ')}
 5. If any of today's items are DIRECTLY related to a recent digest (follow-up release, contrasting take, or evolution of the same topic — not just overlapping tags), include that digest date as an Obsidian wikilink in "related". Strong direct connection only, not tag overlap.
-
+${extraContext}
 Return ONLY valid JSON matching this exact structure — no prose, no markdown fences:
 {
   "readInFull": [{"title": "...", "url": "...", "source": "...", "summary": "One sentence on why to read", "takeaway": ""}],
   "highSignal": [{"title": "...", "url": "...", "source": "...", "summary": "2-3 sentences", "takeaway": "One actionable sentence"}],
   "worthKnowing": [{"title": "...", "url": "...", "source": "...", "summary": "One sentence"}],
-  "tags": ["tooling"],
+  "tags": ["${digestConfig.tags[0] ?? 'tag'}"],
   "related": []
 }`;
 }
@@ -86,6 +79,7 @@ export async function summariseItems(
   filterResult: FilterResult,
   totalScanned: number,
   recentDigests: string[],
+  digestConfig: DigestConfig,
   claude: ClaudeAdapter,
 ): Promise<DigestContent> {
   const itemsFiltered = filterResult.filtered.length;
@@ -103,7 +97,7 @@ export async function summariseItems(
     };
   }
 
-  const prompt = buildSummarisePrompt(filterResult, totalScanned, recentDigests);
+  const prompt = buildSummarisePrompt(filterResult, totalScanned, recentDigests, digestConfig);
   const response = await claude(prompt);
 
   let parsed: unknown;
@@ -120,7 +114,9 @@ export async function summariseItems(
     readInFull: parseSummaryItems(obj['readInFull']),
     highSignal: parseSummaryItems(obj['highSignal']).slice(0, 5),
     worthKnowing: parseSummaryItems(obj['worthKnowing']).slice(0, 5),
-    tags: Array.isArray(obj['tags']) ? (obj['tags'] as string[]).filter((t) => TAG_VOCABULARY.includes(t)) : [],
+    tags: Array.isArray(obj['tags'])
+      ? (obj['tags'] as string[]).filter((t) => digestConfig.tags.includes(t))
+      : [],
     related: Array.isArray(obj['related']) ? (obj['related'] as string[]) : [],
     sourcesSurveyed: totalScanned,
     itemsFiltered,

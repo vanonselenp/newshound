@@ -7,12 +7,12 @@ function formatDate(date: Date): string {
   return date.toISOString().split('T')[0] as string;
 }
 
-function digestDir(vaultPath: string): string {
-  return join(vaultPath, 'AI-Digest');
+function digestDir(vaultPath: string, outputDir: string): string {
+  return join(vaultPath, outputDir);
 }
 
-export async function readRecentDigests(vaultPath: string, days: number): Promise<string[]> {
-  const dir = digestDir(vaultPath);
+export async function readRecentDigests(vaultPath: string, outputDir: string, days: number): Promise<string[]> {
+  const dir = digestDir(vaultPath, outputDir);
   if (!existsSync(dir)) return [];
 
   const results: string[] = [];
@@ -36,16 +36,15 @@ export async function readRecentDigests(vaultPath: string, days: number): Promis
 export function renderDigest(
   content: DigestContent,
   date: Date,
+  digestName: string,
+  rootTag: string,
   catchUpSince?: Date,
 ): string {
   const dateStr = formatDate(date);
   const itemsSurfaced = content.highSignal.length + content.worthKnowing.length;
-  const allTags = ['ai-digest', ...content.tags];
+  const allTags = [rootTag, ...content.tags];
 
-  const frontmatterLines: string[] = [
-    '---',
-    `date: ${dateStr}`,
-  ];
+  const frontmatterLines: string[] = ['---', `date: ${dateStr}`];
 
   if (catchUpSince) {
     frontmatterLines.push(`period: ${formatDate(catchUpSince)} to ${dateStr}`);
@@ -74,17 +73,13 @@ export function renderDigest(
   if (itemsSurfaced === 0) {
     return `${frontmatter}
 
-# AI Digest — ${dateStr}
+# ${digestName} — ${dateStr}
 
 *Nothing cleared the signal threshold today.*
 `;
   }
 
-  const lines: string[] = [
-    frontmatter,
-    '',
-    `# AI Digest — ${dateStr}`,
-  ];
+  const lines: string[] = [frontmatter, '', `# ${digestName} — ${dateStr}`];
 
   // Read in full
   if (content.readInFull.length > 0) {
@@ -128,10 +123,11 @@ export function renderDigest(
 
 export async function writeDigest(
   vaultPath: string,
+  outputDir: string,
   date: Date,
   content: string,
 ): Promise<string> {
-  const dir = digestDir(vaultPath);
+  const dir = digestDir(vaultPath, outputDir);
   await mkdir(dir, { recursive: true });
   const filename = `${formatDate(date)}.md`;
   const filepath = join(dir, filename);
