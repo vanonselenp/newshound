@@ -37,7 +37,7 @@ const EMPTY_CONTENT: DigestContent = {
 describe('renderDigest', () => {
   it('renders frontmatter with correct fields', () => {
     const date = new Date('2026-03-30T08:00:00Z');
-    const output = renderDigest(FULL_CONTENT, date);
+    const output = renderDigest(FULL_CONTENT, date, 'AI Digest', 'ai-digest');
 
     expect(output).toContain('date: 2026-03-30');
     expect(output).toContain('- ai-digest');
@@ -52,25 +52,25 @@ describe('renderDigest', () => {
   it('renders period in frontmatter for catch-up runs', () => {
     const date = new Date('2026-03-30T08:00:00Z');
     const since = new Date('2026-03-27T08:00:00Z');
-    const output = renderDigest(FULL_CONTENT, date, since);
+    const output = renderDigest(FULL_CONTENT, date, 'AI Digest', 'ai-digest', since);
 
     expect(output).toContain('period: 2026-03-27 to 2026-03-30');
   });
 
   it('omits period field for regular runs', () => {
     const date = new Date('2026-03-30T08:00:00Z');
-    const output = renderDigest(FULL_CONTENT, date);
+    const output = renderDigest(FULL_CONTENT, date, 'AI Digest', 'ai-digest');
     expect(output).not.toContain('period:');
   });
 
   it('omits related field when empty', () => {
     const content = { ...FULL_CONTENT, related: [] };
-    const output = renderDigest(content, new Date('2026-03-30T08:00:00Z'));
+    const output = renderDigest(content, new Date('2026-03-30T08:00:00Z'), 'AI Digest', 'ai-digest');
     expect(output).not.toContain('related:');
   });
 
   it('renders correct body sections', () => {
-    const output = renderDigest(FULL_CONTENT, new Date('2026-03-30T08:00:00Z'));
+    const output = renderDigest(FULL_CONTENT, new Date('2026-03-30T08:00:00Z'), 'AI Digest', 'ai-digest');
     expect(output).toContain('## Read in full');
     expect(output).toContain('## High signal');
     expect(output).toContain('## Worth knowing');
@@ -81,25 +81,31 @@ describe('renderDigest', () => {
   });
 
   it('renders filtered count in footer', () => {
-    const output = renderDigest(FULL_CONTENT, new Date('2026-03-30T08:00:00Z'));
+    const output = renderDigest(FULL_CONTENT, new Date('2026-03-30T08:00:00Z'), 'AI Digest', 'ai-digest');
     expect(output).toContain('*41 items filtered as low-signal.*');
   });
 
   it('renders quiet-day stub when items_surfaced is 0', () => {
-    const output = renderDigest(EMPTY_CONTENT, new Date('2026-03-30T08:00:00Z'));
+    const output = renderDigest(EMPTY_CONTENT, new Date('2026-03-30T08:00:00Z'), 'AI Digest', 'ai-digest');
     expect(output).toContain('*Nothing cleared the signal threshold today.*');
     expect(output).toContain('sources_scanned: 34');
     expect(output).toContain('items_surfaced: 0');
     expect(output).not.toContain('## High signal');
   });
 
-  it('renders heading with correct date', () => {
-    const output = renderDigest(FULL_CONTENT, new Date('2026-03-30T08:00:00Z'));
+  it('renders heading with digestName', () => {
+    const output = renderDigest(FULL_CONTENT, new Date('2026-03-30T08:00:00Z'), 'AI Digest', 'ai-digest');
     expect(output).toContain('# AI Digest — 2026-03-30');
   });
 
+  it('renders heading with custom digestName', () => {
+    const output = renderDigest(FULL_CONTENT, new Date('2026-03-30T08:00:00Z'), 'Job Digest', 'jobs');
+    expect(output).toContain('# Job Digest — 2026-03-30');
+    expect(output).toContain('- jobs');
+  });
+
   it('includes takeaway with bold Takeaway label', () => {
-    const output = renderDigest(FULL_CONTENT, new Date('2026-03-30T08:00:00Z'));
+    const output = renderDigest(FULL_CONTENT, new Date('2026-03-30T08:00:00Z'), 'AI Digest', 'ai-digest');
     expect(output).toContain('**Takeaway:** Try it on a refactoring task this week.');
   });
 });

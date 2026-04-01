@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { summariseItems } from '../summarise';
 import type { FilterResult, FeedItem } from '../types';
+import type { DigestConfig } from '../config';
 
 function makeItem(title: string): FeedItem {
   return {
@@ -12,6 +13,22 @@ function makeItem(title: string): FeedItem {
     tier: 'curated',
   };
 }
+
+const DIGEST_CONFIG: DigestConfig = {
+  id: 'ai-tools',
+  name: 'AI Digest',
+  outputDir: 'AI-Digest',
+  stateFilePath: '~/.ai-digest-state.json',
+  lookbackDays: 3,
+  sources: [],
+  filterCriteria: {
+    purpose: 'AI tooling and development',
+    audience: 'a staff engineer who wants practical, actionable AI tooling updates',
+    highSignal: ['New tool releases with concrete capabilities'],
+    lowSignal: ['Hype and speculation'],
+  },
+  tags: ['tooling', 'models', 'workflows', 'pricing', 'apis', 'coding-agents', 'prompting', 'infrastructure', 'open-source', 'releases', 'ai-methodology', 'team-practices'],
+};
 
 const MOCK_DIGEST_RESPONSE = JSON.stringify({
   readInFull: [
@@ -36,7 +53,7 @@ describe('summariseItems', () => {
     };
     const claude = vi.fn().mockResolvedValue(MOCK_DIGEST_RESPONSE);
 
-    const result = await summariseItems(filterResult, 10, [], claude);
+    const result = await summariseItems(filterResult, 10, [], DIGEST_CONFIG, claude);
 
     expect(result.readInFull).toHaveLength(1);
     expect(result.highSignal).toHaveLength(1);
@@ -56,7 +73,7 @@ describe('summariseItems', () => {
     };
     const claude = vi.fn();
 
-    const result = await summariseItems(filterResult, 5, [], claude);
+    const result = await summariseItems(filterResult, 5, [], DIGEST_CONFIG, claude);
 
     expect(result.highSignal).toHaveLength(0);
     expect(result.worthKnowing).toHaveLength(0);
@@ -75,7 +92,7 @@ describe('summariseItems', () => {
       readInFull: [], highSignal: [], worthKnowing: [], tags: [], related: [],
     }));
 
-    await summariseItems(filterResult, 3, ['## Previous digest content'], claude);
+    await summariseItems(filterResult, 3, ['## Previous digest content'], DIGEST_CONFIG, claude);
 
     const prompt = claude.mock.calls[0]?.[0] as string;
     expect(prompt).toContain('Previous digest content');
@@ -91,10 +108,10 @@ describe('summariseItems', () => {
       readInFull: [], highSignal: [], worthKnowing: [], tags: [], related: [],
     }));
 
-    await expect(summariseItems(filterResult, 3, [], claude)).resolves.toBeDefined();
+    await expect(summariseItems(filterResult, 3, [], DIGEST_CONFIG, claude)).resolves.toBeDefined();
   });
 
-  it('filters out tags not in the vocabulary', async () => {
+  it('filters out tags not in the digest tag vocabulary', async () => {
     const filterResult: FilterResult = {
       highSignal: [makeItem('Test Item')],
       worthKnowing: [],
@@ -108,8 +125,42 @@ describe('summariseItems', () => {
       related: [],
     }));
 
-    const result = await summariseItems(filterResult, 3, [], claude);
+    const result = await summariseItems(filterResult, 3, [], DIGEST_CONFIG, claude);
     expect(result.tags).toEqual(['tooling']);
+  });
+
+  it('uses digestConfig.name in the prompt opener', async () => {
+    const filterResult: FilterResult = {
+      highSignal: [makeItem('Test Item')],
+      worthKnowing: [],
+      filtered: [],
+    };
+    const claude = vi.fn().mockResolvedValue(JSON.stringify({
+      readInFull: [], highSignal: [], worthKnowing: [], tags: [], related: [],
+    }));
+
+    await summariseItems(filterResult, 3, [], DIGEST_CONFIG, claude);
+    const prompt = claude.mock.calls[0]?.[0] as string;
+    expect(prompt).toContain('You are writing a daily AI Digest');
+  });
+
+  it('injects summarisationContext when present', async () => {
+    const configWithContext: DigestConfig = {
+      ...DIGEST_CONFIG,
+      summarisationContext: 'Focus on TypeScript and AWS content.',
+    };
+    const filterResult: FilterResult = {
+      highSignal: [makeItem('Test Item')],
+      worthKnowing: [],
+      filtered: [],
+    };
+    const claude = vi.fn().mockResolvedValue(JSON.stringify({
+      readInFull: [], highSignal: [], worthKnowing: [], tags: [], related: [],
+    }));
+
+    await summariseItems(filterResult, 3, [], configWithContext, claude);
+    const prompt = claude.mock.calls[0]?.[0] as string;
+    expect(prompt).toContain('Focus on TypeScript and AWS content.');
   });
 
   it('throws descriptive error when Claude returns invalid JSON', async () => {
@@ -119,7 +170,7 @@ describe('summariseItems', () => {
       filtered: [],
     };
     const claude = vi.fn().mockResolvedValue('Here is a summary: ...');
-    await expect(summariseItems(filterResult, 3, [], claude)).rejects.toThrow(
+    await expect(summariseItems(filterResult, 3, [], DIGEST_CONFIG, claude)).rejects.toThrow(
       'Failed to parse Claude summarise response',
     );
   });

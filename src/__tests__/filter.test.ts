@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { filterItems } from '../filter';
 import type { FeedItem } from '../types';
+import type { FilterCriteria } from '../config';
 
 function makeItem(title: string, tier: 'curated' | 'community' = 'curated'): FeedItem {
   return {
@@ -13,10 +14,26 @@ function makeItem(title: string, tier: 'curated' | 'community' = 'curated'): Fee
   };
 }
 
+const CRITERIA: FilterCriteria = {
+  purpose: 'AI tooling and development',
+  audience: 'a staff engineer who wants practical, actionable AI tooling updates',
+  highSignal: [
+    'New tool releases, features, or APIs with concrete capabilities',
+    '"I built X with Y" posts showing real workflows or architectures',
+  ],
+  worthKnowing: [
+    'Minor updates or incremental improvements to tools',
+  ],
+  lowSignal: [
+    'Hype, speculation about AGI timelines, or "AI will replace X" takes',
+    'Fundraising announcements or company drama',
+  ],
+};
+
 describe('filterItems', () => {
   it('returns empty results when items list is empty', async () => {
     const claude = vi.fn();
-    const result = await filterItems([], claude);
+    const result = await filterItems([], CRITERIA, claude);
     expect(result.highSignal).toHaveLength(0);
     expect(result.worthKnowing).toHaveLength(0);
     expect(result.filtered).toHaveLength(0);
@@ -37,7 +54,7 @@ describe('filterItems', () => {
       ]),
     );
 
-    const result = await filterItems(items, claude);
+    const result = await filterItems(items, CRITERIA, claude);
     expect(result.highSignal).toHaveLength(1);
     expect(result.highSignal[0]!.title).toBe('Claude Code Feature');
     expect(result.worthKnowing).toHaveLength(1);
@@ -52,23 +69,74 @@ describe('filterItems', () => {
       JSON.stringify([{ index: 0, signal: 'high' }, { index: 1, signal: 'low' }]),
     );
 
-    await filterItems(items, claude);
+    await filterItems(items, CRITERIA, claude);
     const prompt = claude.mock.calls[0]?.[0] as string;
     expect(prompt).toContain('tier=curated');
     expect(prompt).toContain('tier=community');
     expect(prompt).toContain('two-pass');
   });
 
+  it('includes criteria purpose in the prompt', async () => {
+    const items = [makeItem('Test')];
+    const claude = vi.fn().mockResolvedValue(JSON.stringify([{ index: 0, signal: 'low' }]));
+
+    await filterItems(items, CRITERIA, claude);
+    const prompt = claude.mock.calls[0]?.[0] as string;
+    expect(prompt).toContain('AI tooling and development');
+  });
+
+  it('includes audience clause in the prompt opener when set', async () => {
+    const items = [makeItem('Test')];
+    const claude = vi.fn().mockResolvedValue(JSON.stringify([{ index: 0, signal: 'low' }]));
+
+    await filterItems(items, CRITERIA, claude);
+    const prompt = claude.mock.calls[0]?.[0] as string;
+    expect(prompt).toContain('targeted at a staff engineer who wants practical, actionable AI tooling updates');
+  });
+
+  it('omits audience clause when audience is not set', async () => {
+    const criteriaNoAudience: FilterCriteria = { ...CRITERIA, audience: undefined };
+    const items = [makeItem('Test')];
+    const claude = vi.fn().mockResolvedValue(JSON.stringify([{ index: 0, signal: 'low' }]));
+
+    await filterItems(items, criteriaNoAudience, claude);
+    const prompt = claude.mock.calls[0]?.[0] as string;
+    expect(prompt).not.toContain('targeted at');
+  });
+
+  it('injects user profile when set', async () => {
+    const criteriaWithProfile: FilterCriteria = {
+      ...CRITERIA,
+      profile: 'Senior TypeScript engineer, 10 years experience',
+    };
+    const items = [makeItem('Test')];
+    const claude = vi.fn().mockResolvedValue(JSON.stringify([{ index: 0, signal: 'low' }]));
+
+    await filterItems(items, criteriaWithProfile, claude);
+    const prompt = claude.mock.calls[0]?.[0] as string;
+    expect(prompt).toContain('USER PROFILE (filter for fit against this):');
+    expect(prompt).toContain('Senior TypeScript engineer');
+  });
+
+  it('does not include profile section when profile is not set', async () => {
+    const items = [makeItem('Test')];
+    const claude = vi.fn().mockResolvedValue(JSON.stringify([{ index: 0, signal: 'low' }]));
+
+    await filterItems(items, CRITERIA, claude);
+    const prompt = claude.mock.calls[0]?.[0] as string;
+    expect(prompt).not.toContain('USER PROFILE');
+  });
+
   it('throws descriptive error when Claude returns invalid JSON', async () => {
     const items = [makeItem('Test')];
     const claude = vi.fn().mockResolvedValue('Sorry, I cannot help with that.');
-    await expect(filterItems(items, claude)).rejects.toThrow('Failed to parse Claude filter response');
+    await expect(filterItems(items, CRITERIA, claude)).rejects.toThrow('Failed to parse Claude filter response');
   });
 
   it('throws when Claude returns non-array JSON', async () => {
     const items = [makeItem('Test')];
     const claude = vi.fn().mockResolvedValue(JSON.stringify({ error: 'bad' }));
-    await expect(filterItems(items, claude)).rejects.toThrow('not a JSON array');
+    await expect(filterItems(items, CRITERIA, claude)).rejects.toThrow('not a JSON array');
   });
 
   it('handles markdown-fenced JSON response', async () => {
@@ -76,7 +144,7 @@ describe('filterItems', () => {
     const claude = vi.fn().mockResolvedValue(
       '```json\n[{"index": 0, "signal": "high"}]\n```',
     );
-    const result = await filterItems(items, claude);
+    const result = await filterItems(items, CRITERIA, claude);
     expect(result.highSignal).toHaveLength(1);
   });
 });

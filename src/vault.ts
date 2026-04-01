@@ -7,45 +7,37 @@ function formatDate(date: Date): string {
   return date.toISOString().split('T')[0] as string;
 }
 
-function digestDir(vaultPath: string): string {
-  return join(vaultPath, 'AI-Digest');
+function digestDir(vaultPath: string, outputDir: string): string {
+  return join(vaultPath, outputDir);
 }
 
-export async function readRecentDigests(vaultPath: string, days: number): Promise<string[]> {
-  const dir = digestDir(vaultPath);
+export async function readRecentDigests(vaultPath: string, outputDir: string, days: number): Promise<string[]> {
+  const dir = digestDir(vaultPath, outputDir);
   if (!existsSync(dir)) return [];
 
-  const results: string[] = [];
   const now = Date.now();
+  const reads = Array.from({ length: days }, (_, i) => {
+    const date = new Date(now - (i + 1) * 24 * 60 * 60 * 1000);
+    const filepath = join(dir, `${formatDate(date)}.md`);
+    return readFile(filepath, 'utf-8').catch(() => null);
+  });
 
-  for (let i = 1; i <= days; i++) {
-    const date = new Date(now - i * 24 * 60 * 60 * 1000);
-    const filename = `${formatDate(date)}.md`;
-    const filepath = join(dir, filename);
-    try {
-      const content = await readFile(filepath, 'utf-8');
-      results.push(content);
-    } catch {
-      // File doesn't exist for this date — skip
-    }
-  }
-
-  return results;
+  const results = await Promise.all(reads);
+  return results.filter((c): c is string => c !== null);
 }
 
 export function renderDigest(
   content: DigestContent,
   date: Date,
+  digestName: string,
+  rootTag: string,
   catchUpSince?: Date,
 ): string {
   const dateStr = formatDate(date);
   const itemsSurfaced = content.highSignal.length + content.worthKnowing.length;
-  const allTags = ['ai-digest', ...content.tags];
+  const allTags = [rootTag, ...content.tags];
 
-  const frontmatterLines: string[] = [
-    '---',
-    `date: ${dateStr}`,
-  ];
+  const frontmatterLines: string[] = ['---', `date: ${dateStr}`];
 
   if (catchUpSince) {
     frontmatterLines.push(`period: ${formatDate(catchUpSince)} to ${dateStr}`);
@@ -74,17 +66,13 @@ export function renderDigest(
   if (itemsSurfaced === 0) {
     return `${frontmatter}
 
-# AI Digest — ${dateStr}
+# ${digestName} — ${dateStr}
 
 *Nothing cleared the signal threshold today.*
 `;
   }
 
-  const lines: string[] = [
-    frontmatter,
-    '',
-    `# AI Digest — ${dateStr}`,
-  ];
+  const lines: string[] = [frontmatter, '', `# ${digestName} — ${dateStr}`];
 
   // Read in full
   if (content.readInFull.length > 0) {
@@ -128,10 +116,11 @@ export function renderDigest(
 
 export async function writeDigest(
   vaultPath: string,
+  outputDir: string,
   date: Date,
   content: string,
 ): Promise<string> {
-  const dir = digestDir(vaultPath);
+  const dir = digestDir(vaultPath, outputDir);
   await mkdir(dir, { recursive: true });
   const filename = `${formatDate(date)}.md`;
   const filepath = join(dir, filename);
