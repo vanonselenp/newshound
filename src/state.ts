@@ -1,4 +1,5 @@
-import { readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { dirname } from 'path';
 
 export async function readLastRun(stateFilePath: string, lookbackDays: number): Promise<Date> {
   try {
@@ -27,6 +28,7 @@ export async function readLastRun(stateFilePath: string, lookbackDays: number): 
   } catch (err) {
     if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
       const defaultDate = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
+      await mkdir(dirname(stateFilePath), { recursive: true });
       await writeFile(stateFilePath, JSON.stringify({ lastRun: defaultDate.toISOString() }), 'utf-8');
       return defaultDate;
     }
