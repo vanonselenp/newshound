@@ -1,6 +1,6 @@
 # newshound
 
-Daily AI tooling digest. Aggregates content from curated blogs, Hacker News, and Reddit, filters for practical signal via Claude, and writes a markdown digest to your Obsidian vault.
+Configurable daily digest runner. Aggregates content from RSS feeds, Hacker News, and Reddit, filters for signal via Claude, and writes markdown digests to your Obsidian vault. Each digest type is defined entirely in config — no code changes needed to add a new one.
 
 ## Prerequisites
 
@@ -25,14 +25,16 @@ pnpm run build
 ```bash
 cp config.example.json ~/.ai-digest-config.json
 ```
-Edit `~/.ai-digest-config.json` and set your vault path:
+Edit `~/.ai-digest-config.json`. The top-level shape is:
 ```json
 {
   "vaultPath": "/path/to/your/obsidian/vault",
-  "stateFilePath": "~/.ai-digest-state.json",
-  "lookbackDays": 3
+  "digests": [ ... ]
 }
 ```
+Each entry in `digests` is one digest type. `config.example.json` ships with two: an AI tooling digest and a job postings digest. At minimum, update `vaultPath` and the `stateFilePath` values. For the job digest, fill in the `profile` field under `filterCriteria` with your background and preferences so Claude can match postings against them.
+
+To add a new digest type, append another entry to the `digests` array — no code changes required.
 
 **4. Test run**
 ```bash
