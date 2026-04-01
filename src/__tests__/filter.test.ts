@@ -15,7 +15,8 @@ function makeItem(title: string, tier: 'curated' | 'community' = 'curated'): Fee
 }
 
 const CRITERIA: FilterCriteria = {
-  purpose: 'AI tooling and development content for software practitioners',
+  purpose: 'AI tooling and development',
+  audience: 'a staff engineer who wants practical, actionable AI tooling updates',
   highSignal: [
     'New tool releases, features, or APIs with concrete capabilities',
     '"I built X with Y" posts showing real workflows or architectures',
@@ -81,7 +82,26 @@ describe('filterItems', () => {
 
     await filterItems(items, CRITERIA, claude);
     const prompt = claude.mock.calls[0]?.[0] as string;
-    expect(prompt).toContain('AI tooling and development content for software practitioners');
+    expect(prompt).toContain('AI tooling and development');
+  });
+
+  it('includes audience clause in the prompt opener when set', async () => {
+    const items = [makeItem('Test')];
+    const claude = vi.fn().mockResolvedValue(JSON.stringify([{ index: 0, signal: 'low' }]));
+
+    await filterItems(items, CRITERIA, claude);
+    const prompt = claude.mock.calls[0]?.[0] as string;
+    expect(prompt).toContain('targeted at a staff engineer who wants practical, actionable AI tooling updates');
+  });
+
+  it('omits audience clause when audience is not set', async () => {
+    const criteriaNoAudience: FilterCriteria = { ...CRITERIA, audience: undefined };
+    const items = [makeItem('Test')];
+    const claude = vi.fn().mockResolvedValue(JSON.stringify([{ index: 0, signal: 'low' }]));
+
+    await filterItems(items, criteriaNoAudience, claude);
+    const prompt = claude.mock.calls[0]?.[0] as string;
+    expect(prompt).not.toContain('targeted at');
   });
 
   it('injects user profile when set', async () => {

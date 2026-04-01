@@ -2,6 +2,10 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 
 export type ClaudeAdapter = (prompt: string) => Promise<string>;
 
+export function stripJsonFences(response: string): string {
+  return response.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+}
+
 type SpawnFn = (
   command: string,
   args: string[],

@@ -40,7 +40,7 @@ async function main(): Promise<void> {
   for (const digest of config.digests) {
     // Resolve ~ in stateFilePath
     const stateFilePath = digest.stateFilePath.replace(/^~/, homedir());
-    const lookbackDays = digest.lookbackDays ?? 3;
+    const lookbackDays = digest.lookbackDays;
 
     log(digest.id, 'Reading last run timestamp…');
     const since = await readLastRun(stateFilePath, lookbackDays);

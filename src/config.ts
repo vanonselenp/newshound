@@ -12,6 +12,7 @@ export type Source = {
 
 export type FilterCriteria = {
   purpose: string;
+  audience?: string;    // who is this digest for, and why — grounds the filter (e.g. "a staff engineer who wants practical, actionable updates")
   highSignal: string[];
   lowSignal: string[];
   worthKnowing?: string[];

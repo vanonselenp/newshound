@@ -1,4 +1,4 @@
-import type { ClaudeAdapter } from './claude';
+import { stripJsonFences, type ClaudeAdapter } from './claude';
 import type { FeedItem, FilterResult } from './types';
 import type { FilterCriteria } from './config';
 
@@ -28,7 +28,9 @@ Description: ${item.description.slice(0, 300)}`,
     ? `\nUSER PROFILE (filter for fit against this):\n${criteria.profile}\n`
     : '';
 
-  return `You are evaluating content items for a daily ${criteria.purpose} digest. Classify each item as high signal, worth_knowing, or low based on the criteria below.
+  const audienceClause = criteria.audience ? ` targeted at ${criteria.audience}` : '';
+
+  return `You are evaluating content items for a daily ${criteria.purpose} digest${audienceClause}. Classify each item as high signal, worth_knowing, or low based on the criteria below.
 ${profileSection}
 HIGH SIGNAL — include and summarise fully:
 ${highSignalBullets}
@@ -65,9 +67,7 @@ export async function filterItems(
 
   let parsed: unknown;
   try {
-    // Strip potential markdown fences
-    const cleaned = response.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-    parsed = JSON.parse(cleaned);
+    parsed = JSON.parse(stripJsonFences(response));
   } catch {
     throw new Error(`Failed to parse Claude filter response as JSON: ${response.slice(0, 200)}`);
   }

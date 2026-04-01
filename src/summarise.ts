@@ -1,4 +1,4 @@
-import type { ClaudeAdapter } from './claude';
+import { stripJsonFences, type ClaudeAdapter } from './claude';
 import type { DigestContent, FilterResult, SummaryItem } from './types';
 import type { DigestConfig } from './config';
 
@@ -102,8 +102,7 @@ export async function summariseItems(
 
   let parsed: unknown;
   try {
-    const cleaned = response.trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-    parsed = JSON.parse(cleaned);
+    parsed = JSON.parse(stripJsonFences(response));
   } catch {
     throw new Error(`Failed to parse Claude summarise response as JSON: ${response.slice(0, 200)}`);
   }

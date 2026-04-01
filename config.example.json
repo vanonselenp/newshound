@@ -29,7 +29,8 @@
         { "name": "r/ChatGPT", "type": "reddit", "subreddit": "ChatGPT", "minScore": 50, "tier": "community" }
       ],
       "filterCriteria": {
-        "purpose": "AI tooling and development content for software practitioners",
+        "purpose": "AI tooling and development",
+        "audience": "a staff engineer who wants practical, actionable AI tooling updates",
         "highSignal": [
           "New tool releases, features, or APIs with concrete capabilities (Claude Code, Cursor, Copilot, Codex, etc.)",
           "\"I built X with Y\" posts showing real workflows or architectures",

@@ -22,7 +22,8 @@ const DIGEST_CONFIG: DigestConfig = {
   lookbackDays: 3,
   sources: [],
   filterCriteria: {
-    purpose: 'AI tooling and development content for software practitioners',
+    purpose: 'AI tooling and development',
+    audience: 'a staff engineer who wants practical, actionable AI tooling updates',
     highSignal: ['New tool releases with concrete capabilities'],
     lowSignal: ['Hype and speculation'],
   },

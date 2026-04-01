@@ -15,22 +15,15 @@ export async function readRecentDigests(vaultPath: string, outputDir: string, da
   const dir = digestDir(vaultPath, outputDir);
   if (!existsSync(dir)) return [];
 
-  const results: string[] = [];
   const now = Date.now();
+  const reads = Array.from({ length: days }, (_, i) => {
+    const date = new Date(now - (i + 1) * 24 * 60 * 60 * 1000);
+    const filepath = join(dir, `${formatDate(date)}.md`);
+    return readFile(filepath, 'utf-8').catch(() => null);
+  });
 
-  for (let i = 1; i <= days; i++) {
-    const date = new Date(now - i * 24 * 60 * 60 * 1000);
-    const filename = `${formatDate(date)}.md`;
-    const filepath = join(dir, filename);
-    try {
-      const content = await readFile(filepath, 'utf-8');
-      results.push(content);
-    } catch {
-      // File doesn't exist for this date — skip
-    }
-  }
-
-  return results;
+  const results = await Promise.all(reads);
+  return results.filter((c): c is string => c !== null);
 }
 
 export function renderDigest(
