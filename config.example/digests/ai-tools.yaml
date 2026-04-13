@@ -7,17 +7,29 @@ sources:
     type: rss
     url: https://openai.com/news/rss.xml
     tier: curated
+  - name: Anthropic News
+    type: rss
+    url: https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_news.xml
+    tier: curated
+  - name: Anthropic Engineering
+    type: rss
+    url: https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_engineering.xml
+    tier: curated
+  - name: Google DeepMind Blog
+    type: rss
+    url: https://deepmind.google/blog/rss.xml
+    tier: curated
   - name: Cursor Changelog
     type: rss
     url: https://changelog.cursor.sh/rss
     tier: curated
-  - name: Vercel Blog
-    type: atom
-    url: https://vercel.com/atom
+  - name: GitHub Copilot Changelog
+    type: rss
+    url: https://github.blog/changelog/label/copilot/feed/
     tier: curated
-  - name: Simon Willison's Blog
-    type: atom
-    url: https://simonwillison.net/atom/entries/
+  - name: OpenRouter Changelog
+    type: rss
+    url: https://openrouter.ai/changelog/rss.xml
     tier: curated
   - name: Latent Space
     type: rss
@@ -27,13 +39,29 @@ sources:
     type: rss
     url: https://sourcegraph.com/blog/rss.xml
     tier: curated
-  - name: GitHub Blog
+  - name: vLLM Blog
     type: rss
-    url: https://github.blog/feed/
+    url: https://blog.vllm.ai/rss.xml
+    tier: curated
+  - name: Ollama Blog
+    type: rss
+    url: https://ollama.com/blog/rss.xml
+    tier: curated
+  - name: LangChain Blog
+    type: rss
+    url: https://blog.langchain.com/rss/
+    tier: curated
+  - name: Together AI Blog
+    type: rss
+    url: https://www.together.ai/blog/rss.xml
     tier: curated
   - name: Hugging Face Blog
     type: rss
     url: https://huggingface.co/blog/feed.xml
+    tier: curated
+  - name: Simon Willison's Blog
+    type: atom
+    url: https://simonwillison.net/atom/entries/
     tier: curated
   - name: Eugene Yan
     type: rss
@@ -55,10 +83,6 @@ sources:
     type: rss
     url: https://jxnl.co/feed_rss_created.xml
     tier: curated
-  - name: Cloudflare Blog
-    type: rss
-    url: https://blog.cloudflare.com/rss
-    tier: community
   - name: Hacker News
     type: hn
     minScore: 50
@@ -77,11 +101,6 @@ sources:
     type: reddit
     subreddit: LocalLLaMA
     minScore: 30
-    tier: community
-  - name: r/ChatGPT
-    type: reddit
-    subreddit: ChatGPT
-    minScore: 50
     tier: community
 
 filterCriteria:

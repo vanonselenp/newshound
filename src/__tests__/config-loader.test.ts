@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtemp, mkdir, writeFile } from 'fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { loadConfig } from '../config-loader';
@@ -100,5 +100,83 @@ describe('loadConfig', () => {
     await writeFile(join(dir, 'digests', 'bad.yaml'), ': invalid: yaml: {', 'utf-8');
 
     await expect(loadConfig(dir)).rejects.toThrow('bad.yaml');
+  });
+
+  it('loads the example AI tools digest with the revised tooling-focused source mix', async () => {
+    const dir = await makeConfigDir();
+    const exampleDigest = await readFile(
+      join(__dirname, '..', '..', 'config.example', 'digests', 'ai-tools.yaml'),
+      'utf-8',
+    );
+    await writeFile(join(dir, 'digests', 'ai-tools.yaml'), exampleDigest, 'utf-8');
+
+    const config = await loadConfig(dir);
+    expect(config.digests).toHaveLength(1);
+    expect(config.digests[0]!.sources).toHaveLength(24);
+
+    expect(config.digests[0]!.sources).toEqual(
+      expect.arrayContaining([
+        {
+          name: 'Anthropic News',
+          type: 'rss',
+          url: 'https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_news.xml',
+          tier: 'curated',
+        },
+        {
+          name: 'Anthropic Engineering',
+          type: 'rss',
+          url: 'https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_engineering.xml',
+          tier: 'curated',
+        },
+        {
+          name: 'vLLM Blog',
+          type: 'rss',
+          url: 'https://blog.vllm.ai/rss.xml',
+          tier: 'curated',
+        },
+        {
+          name: 'Google DeepMind Blog',
+          type: 'rss',
+          url: 'https://deepmind.google/blog/rss.xml',
+          tier: 'curated',
+        },
+        {
+          name: 'GitHub Copilot Changelog',
+          type: 'rss',
+          url: 'https://github.blog/changelog/label/copilot/feed/',
+          tier: 'curated',
+        },
+        {
+          name: 'OpenRouter Changelog',
+          type: 'rss',
+          url: 'https://openrouter.ai/changelog/rss.xml',
+          tier: 'curated',
+        },
+        {
+          name: 'Ollama Blog',
+          type: 'rss',
+          url: 'https://ollama.com/blog/rss.xml',
+          tier: 'curated',
+        },
+        {
+          name: 'LangChain Blog',
+          type: 'rss',
+          url: 'https://blog.langchain.com/rss/',
+          tier: 'curated',
+        },
+        {
+          name: 'Together AI Blog',
+          type: 'rss',
+          url: 'https://www.together.ai/blog/rss.xml',
+          tier: 'curated',
+        },
+      ]),
+    );
+
+    const sourceNames = config.digests[0]!.sources.map((source) => source.name);
+    expect(sourceNames).not.toContain('Vercel Blog');
+    expect(sourceNames).not.toContain('GitHub Blog');
+    expect(sourceNames).not.toContain('Cloudflare Blog');
+    expect(sourceNames).not.toContain('r/ChatGPT');
   });
 });
