@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import type { DigestContent } from './types';
 
@@ -16,114 +16,66 @@ export async function readRecentDigests(vaultPath: string, outputDir: string, da
   if (!existsSync(dir)) return [];
 
   const now = Date.now();
-  const reads = Array.from({ length: days }, (_, i) => {
-    const date = new Date(now - (i + 1) * 24 * 60 * 60 * 1000);
-    const filepath = join(dir, `${formatDate(date)}.md`);
-    return readFile(filepath, 'utf-8').catch(() => null);
+  const reads = Array.from({ length: days }, (_, index) => {
+    const date = new Date(now - (index + 1) * 24 * 60 * 60 * 1000);
+    return readFile(join(dir, `${formatDate(date)}.md`), 'utf-8').catch(() => null);
   });
 
   const results = await Promise.all(reads);
-  return results.filter((c): c is string => c !== null);
+  return results.filter((content): content is string => content !== null);
 }
 
-export function renderDigest(
-  content: DigestContent,
-  date: Date,
-  digestName: string,
-  rootTag: string,
-  catchUpSince?: Date,
-): string {
+export function renderDigest(content: DigestContent, date: Date, digestName: string, rootTag: string, catchUpSince?: Date): string {
   const dateStr = formatDate(date);
   const itemsSurfaced = content.highSignal.length + content.worthKnowing.length;
-  const allTags = [rootTag, ...content.tags];
-
-  const frontmatterLines: string[] = ['---', `date: ${dateStr}`];
-
-  if (catchUpSince) {
-    frontmatterLines.push(`period: ${formatDate(catchUpSince)} to ${dateStr}`);
-  }
-
-  frontmatterLines.push('tags:');
-  for (const tag of allTags) {
-    frontmatterLines.push(`  - ${tag}`);
-  }
-
-  frontmatterLines.push(`sources_scanned: ${content.sourcesSurveyed}`);
-  frontmatterLines.push(`items_surfaced: ${itemsSurfaced}`);
-  frontmatterLines.push(`items_filtered: ${content.itemsFiltered}`);
-
+  const sourceHealthPercent = content.sourceHealthPercent ?? 100;
+  const runHealthGrade = content.runHealthGrade ?? 'A';
+  const frontmatter = ['---', `date: ${dateStr}`];
+  if (catchUpSince) frontmatter.push(`period: ${formatDate(catchUpSince)} to ${dateStr}`);
+  frontmatter.push('tags:');
+  for (const tag of [rootTag, ...content.tags]) frontmatter.push(`  - ${tag}`);
+  frontmatter.push(`sources_scanned: ${content.sourcesSurveyed}`);
+  frontmatter.push(`items_surfaced: ${itemsSurfaced}`);
+  frontmatter.push(`items_filtered: ${content.itemsFiltered}`);
+  frontmatter.push(`source_health: ${sourceHealthPercent}`);
+  frontmatter.push(`run_health: ${runHealthGrade}`);
   if (content.related.length > 0) {
-    frontmatterLines.push('related:');
-    for (const rel of content.related) {
-      frontmatterLines.push(`  - "${rel}"`);
-    }
+    frontmatter.push('related:');
+    for (const related of content.related) frontmatter.push(`  - "${related}"`);
   }
+  frontmatter.push('---');
 
-  frontmatterLines.push('---');
-  const frontmatter = frontmatterLines.join('\n');
-
-  // Quiet day stub
   if (itemsSurfaced === 0) {
-    return `${frontmatter}
-
-# ${digestName} — ${dateStr}
-
-*Nothing cleared the signal threshold today.*
-`;
+    return `${frontmatter.join('\n')}\n\n# ${digestName} — ${dateStr}\n\n*Nothing cleared the signal threshold today.*\n`;
   }
 
-  const lines: string[] = [frontmatter, '', `# ${digestName} — ${dateStr}`];
-
-  // Read in full
+  const lines: string[] = [frontmatter.join('\n'), '', `# ${digestName} — ${dateStr}`];
   if (content.readInFull.length > 0) {
     lines.push('', '## Read in full', '');
-    for (const item of content.readInFull) {
-      lines.push(`- [${item.title}](${item.url}) · ${item.source} — ${item.summary}`);
-    }
+    for (const item of content.readInFull) lines.push(`- [${item.title}](${item.url}) · ${item.source} — ${item.summary}`);
   }
-
-  // High signal
   if (content.highSignal.length > 0) {
     lines.push('', '## High signal', '');
     for (const item of content.highSignal) {
       lines.push(`### [${item.title}](${item.url})`);
-      lines.push(`*${item.source}*`);
-      lines.push('');
-      lines.push(item.summary);
-      if (item.takeaway) {
-        lines.push('');
-        lines.push(`**Takeaway:** ${item.takeaway}`);
-      }
+      lines.push(`*${item.source}*`, '', item.summary);
+      if (item.takeaway) lines.push('', `**Takeaway:** ${item.takeaway}`);
       lines.push('');
     }
   }
-
-  // Worth knowing
   if (content.worthKnowing.length > 0) {
     lines.push('## Worth knowing', '');
-    for (const item of content.worthKnowing) {
-      lines.push(`- [${item.title}](${item.url}) · ${item.source} — ${item.summary}`);
-    }
+    for (const item of content.worthKnowing) lines.push(`- [${item.title}](${item.url}) · ${item.source} — ${item.summary}`);
     lines.push('');
   }
-
-  lines.push('---', '');
-  lines.push(`*${content.itemsFiltered} items filtered as low-signal.*`);
-  lines.push('');
-
+  lines.push('---', '', `*${content.itemsFiltered} items filtered as low-signal.*`, '');
   return lines.join('\n');
 }
 
-export async function writeDigest(
-  vaultPath: string,
-  outputDir: string,
-  date: Date,
-  content: string,
-): Promise<string> {
+export async function writeDigest(vaultPath: string, outputDir: string, date: Date, content: string): Promise<string> {
   const dir = digestDir(vaultPath, outputDir);
   await mkdir(dir, { recursive: true });
-  const filename = `${formatDate(date)}.md`;
-  const filepath = join(dir, filename);
+  const filepath = join(dir, `${formatDate(date)}.md`);
   await writeFile(filepath, content, 'utf-8');
   return filepath;
 }
