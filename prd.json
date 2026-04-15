@@ -1,107 +1,173 @@
 {
   "project": "newshound",
-  "branchName": "ralph/multi-digest",
-  "description": "Multi-Digest Generalisation — make adding a new digest type a config-only change with no code modifications required",
+  "branchName": "ralph/hybrid-discovery-quality",
+  "description": "Hybrid Discovery, Ranking, and Digest Quality - improve digest relevance with full-text enrichment, dedupe, bounded discovery, and visible run-health reporting.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Add FilterCriteria and DigestConfig types to src/config.ts",
-      "description": "As a developer, I want typed config shapes that fully describe a digest so that TypeScript catches missing fields at compile time.",
+      "title": "Add richer candidate and source config types",
+      "description": "As a developer, I want typed candidate and source configuration models so the pipeline can support enrichment, discovery sources, and bounded run budgets safely.",
       "acceptanceCriteria": [
-        "FilterCriteria type exported with fields: purpose (string), highSignal (string[]), lowSignal (string[]), worthKnowing? (string[]), profile? (string)",
-        "DigestConfig type exported with fields: id (string), name (string), outputDir (string), stateFilePath (string), lookbackDays (number), sources (Source[]), filterCriteria (FilterCriteria), tags (string[]), summarisationContext? (string)",
-        "Config type updated to { vaultPath: string; digests: DigestConfig[] }",
-        "DEFAULT_SOURCES export deleted from config.ts",
+        "Add a candidate type that includes snippet text, optional fullText, canonicalUrl, source metadata, and score metadata",
+        "Add source config support for monitored and discovery modes",
+        "Add digest-level candidate budget config for maxRawCandidatesPerRun, maxFullTextFetchesPerRun, and maxRankedCandidatesForClaude",
+        "Config loader applies sensible defaults for new optional source and budget fields",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-002",
-      "title": "Generalise src/filter.ts to accept FilterCriteria",
-      "description": "As a developer, I want filterItems to build its prompt from a FilterCriteria object so different digest types apply different filtering rules without code changes.",
+      "title": "Return richer candidates from existing fetchers",
+      "description": "As a developer, I want the current feed, Reddit, and HN fetchers to emit richer candidate items so later stages can enrich, dedupe, and rank them consistently.",
       "acceptanceCriteria": [
-        "buildFilterPrompt(items, criteria: FilterCriteria) builds HIGH/WORTH/LOW sections from criteria.highSignal, criteria.worthKnowing, criteria.lowSignal arrays",
-        "Prompt opens with: \"You are evaluating content items for a daily {criteria.purpose} digest…\"",
-        "When criteria.profile is set, prompt appends: \"USER PROFILE (filter for fit against this):\\n{profile}\"",
-        "filterItems signature updated to filterItems(items: FeedItem[], criteria: FilterCriteria, claude: ClaudeAdapter)",
-        "All existing filter tests updated and passing with new signatures",
+        "Feed, Reddit, and HN fetchers return the richer candidate type instead of the current minimal feed item shape",
+        "Returned candidates include sourceType, sourceMode, tier, snippet, and canonicalUrl placeholders or derived values",
+        "HN query terms are configurable from source config instead of only hardcoded in source code",
+        "Fetcher and orchestrator tests are updated for the richer candidate shape",
         "Tests pass",
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-003",
-      "title": "Generalise src/summarise.ts to accept DigestConfig",
-      "description": "As a developer, I want summariseItems to derive its prompt, tag vocabulary, and opener from DigestConfig so different digest types produce correctly-titled, correctly-tagged output.",
+      "title": "Add bounded full-text enrichment step",
+      "description": "As a digest reader, I want selected candidates enriched with article content so ranking and summaries use the substance of an item instead of only teaser text.",
       "acceptanceCriteria": [
-        "Hardcoded TAG_VOCABULARY constant removed from summarise.ts",
-        "buildSummarisePrompt opens with: \"You are writing a daily ${digestConfig.name}…\"",
-        "Tag list in prompt sourced from digestConfig.tags.join(', ')",
-        "digestConfig.summarisationContext appended to prompt when present",
-        "digestConfig.filterCriteria.profile injected as context when present",
-        "Tag guard uses digestConfig.tags.includes(t) instead of hardcoded list",
-        "summariseItems signature updated to summariseItems(filterResult, totalScanned, recentDigests, digestConfig: DigestConfig, claude)",
-        "All existing summarise tests updated and passing",
+        "Add an enrichment module that fetches article HTML or source API content for selected candidates",
+        "All curated items are eligible for enrichment subject to maxFullTextFetchesPerRun",
+        "Community candidates are only enriched after a lightweight first-pass gate or bounded candidate cap",
+        "Enriched candidates record contentFetched, extractionMethod, and extractionError when applicable",
+        "When extraction fails, the pipeline keeps the candidate with snippet fallback instead of dropping it",
+        "Enrichment tests cover successful extraction, empty extraction, and network failure fallback",
         "Tests pass",
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-004",
-      "title": "Generalise src/vault.ts to accept outputDir, digestName, rootTag",
-      "description": "As a developer, I want vault functions to accept output path and branding parameters so each digest type writes to its own subdirectory with its own heading.",
+      "title": "Add URL canonicalisation and duplicate clustering",
+      "description": "As a digest reader, I want repeated stories merged across sources so the digest does not waste space on duplicate coverage.",
       "acceptanceCriteria": [
-        "digestDir(vaultPath, outputDir: string) — no hardcoded 'AI-Digest'",
-        "readRecentDigests(vaultPath: string, outputDir: string, days: number) — outputDir parameter replaces hardcoded path",
-        "renderDigest(content, date, digestName: string, rootTag: string, catchUpSince?) — digestName replaces hardcoded 'AI Digest', rootTag replaces hardcoded 'ai-digest'",
-        "writeDigest(vaultPath: string, outputDir: string, date, content) — outputDir parameter replaces hardcoded path",
-        "All existing vault tests updated and passing",
+        "Add URL canonicalisation before ranking",
+        "Exact duplicate stories across sources are collapsed into a single cluster",
+        "Near-duplicate title matching is mildly aggressive and can group materially similar titles for the same story",
+        "Duplicate clusters preserve alternate source links for later summary or debugging use",
+        "Tests cover canonical URL handling, exact duplicates, and near-duplicate title clustering",
         "Tests pass",
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-005",
-      "title": "Update src/index.ts to loop over config.digests",
-      "description": "As a user, I want one CLI invocation to run every configured digest in sequence so I don't need separate processes per digest type.",
+      "title": "Add bounded ranking step with structured scores",
+      "description": "As a digest reader, I want candidates ranked before summarisation so the digest surfaces the highest-value unique stories first.",
       "acceptanceCriteria": [
-        "DEFAULT_SOURCES import removed from index.ts",
-        "Config loaded as { vaultPath, digests } matching updated Config type",
-        "for (const digest of config.digests) loop replaces the single pipeline call",
-        "Per digest: ~ in digest.stateFilePath is resolved, full pipeline run with that digest's own config",
-        "Log lines prefixed with [newshound:${digest.id}]",
-        "All existing integration tests updated and passing",
+        "Add a ranking module that assigns relevance, signal, novelty, fit, final, bucket, and reason for each ranked candidate",
+        "Ranking combines deterministic priors such as freshness or source trust with Claude-generated scoring",
+        "Only a bounded number of deduped candidates are sent to Claude for ranking based on maxRankedCandidatesForClaude",
+        "Summarisation input is the top-ranked unique stories rather than an unordered set of filtered items",
+        "Ranking tests verify structured score parsing for valid responses",
         "Tests pass",
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-006",
-      "title": "Update config.example.json with two digest entries",
-      "description": "As a new user, I want the example config to show both digest types fully configured so I can adapt it without reading source code.",
+      "title": "Validate Claude ranking and summary responses strictly",
+      "description": "As an operator, I want malformed Claude output rejected clearly so the digest cannot silently lose or mis-rank items.",
       "acceptanceCriteria": [
-        "Top-level shape is { vaultPath, digests: [...] } — old flat-shape fields removed",
-        "First entry has id: \"ai-tools\" and contains all sources previously in DEFAULT_SOURCES plus the AI-tools filter criteria and tags",
-        "Second entry has id: \"jobs\" with a sample job RSS source, a profile placeholder string, job-appropriate filter criteria (highSignal/worthKnowing/lowSignal arrays), and job tags",
+        "Ranking responses reject invalid JSON, duplicate indexes, missing indexes, invalid bucket values, and out-of-range scores",
+        "Summary responses reject malformed JSON and invalid structured fields instead of silently accepting bad output",
+        "Every candidate sent to Claude is accounted for exactly once when the response contract requires it",
+        "Validation failures produce a clear error or explicit degraded-run path rather than silent omission",
+        "Tests cover invalid JSON, duplicate indexes, missing candidates, and invalid score values",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": true,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Add run report and visible run-health grading",
+      "description": "As a digest reader, I want visible run-health metrics in the digest so I can tell when a run is incomplete without checking logs.",
+      "acceptanceCriteria": [
+        "Each run writes a machine-readable report with source-level counts and overall totals",
+        "Run health is calculated from source-health percentage only in the initial implementation",
+        "Run health uses grades A for >90%, B for >80%, C for >70%, D for >60%, E for >50%, and F for <=50%",
+        "Grade A is treated as not degraded and lower grades are reported as progressively worse run health",
+        "Digest frontmatter includes source-health percentage and run-health letter grade",
+        "Tests cover grade mapping, degraded-run thresholds, and run report generation",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Add bounded YouTube discovery source",
+      "description": "As a digest reader, I want recent relevant YouTube results included through a bounded discovery source so useful video content can reach the digest without unbounded search.",
+      "acceptanceCriteria": [
+        "Add a YouTube discovery source type with lookbackHours, query list or trusted channels, and maxResultsPerQuery",
+        "The pipeline refuses to run YouTube discovery without explicit bounds",
+        "YouTube candidates enter the same enrichment, dedupe, and ranking pipeline as monitored-source candidates",
+        "Config and adapter tests cover source parsing and enforcement of YouTube query or result caps",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Add bounded GitHub releases discovery source",
+      "description": "As a digest reader, I want recent GitHub releases from tracked orgs or repos included so tooling updates surface quickly without broad GitHub searching.",
+      "acceptanceCriteria": [
+        "Add a GitHub discovery source type limited to releases only in the initial implementation",
+        "GitHub discovery requires explicit repo or organisation configuration, a bounded time window, and a per-run result cap",
+        "GitHub release candidates enter the same enrichment, dedupe, and ranking pipeline as other candidates",
+        "Config and adapter tests cover source parsing and enforcement of GitHub result caps",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Wire the new staged pipeline through index and summary generation",
+      "description": "As a maintainer, I want the CLI orchestration updated to use the new staged pipeline so all digests run with enrichment, dedupe, ranking, and reporting in the correct order.",
+      "acceptanceCriteria": [
+        "Index orchestration runs the stages in order: fetch lightweight candidates, enrich selected candidates, dedupe, rank, summarise, write digest, write run report",
+        "Digest rendering and summary prompts use fullText when present and fall back to snippet text otherwise",
+        "Digest output remains compatible with the existing multi-digest config structure",
+        "Integration tests cover the updated staged pipeline end-to-end",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
       "notes": ""
     }
   ]
