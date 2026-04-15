@@ -86,8 +86,13 @@ This feature introduces a phased improvement plan that prioritises digest qualit
 **Acceptance Criteria:**
 - [ ] Each digest run emits a machine-readable run report with source-level and total-level counts.
 - [ ] The run report includes raw candidates, enriched candidates, deduped candidates, filtered items, surfaced items, and extraction failure counts.
-- [ ] The pipeline marks a run as degraded when configured failure thresholds are exceeded.
-- [ ] The digest output or logs clearly indicate when a run was degraded.
+- [ ] The pipeline calculates a source-health percentage based on the percentage of configured sources that completed successfully.
+- [ ] The pipeline assigns a single letter grade from that percentage using an `A-F` scale.
+- [ ] Source-health maps to grades as follows: `A` for `>90%`, `B` for `>80%`, `C` for `>70%`, `D` for `>60%`, `E` for `>50%`, and `F` for `<=50%`.
+- [ ] A run with grade `A` is marked not degraded.
+- [ ] Lower grades are reflected as progressively worse run health beneath the `A` threshold.
+- [ ] The digest frontmatter includes the run-health percentage and letter grade.
+- [ ] The digest output, logs, and run report clearly indicate when a run was partially degraded or degraded.
 - [ ] Add tests covering degraded-run thresholds and report generation.
 - [ ] `npm run typecheck` passes.
 - [ ] `npm run test` passes.
@@ -109,6 +114,7 @@ This feature introduces a phased improvement plan that prioritises digest qualit
 
 **Acceptance Criteria:**
 - [ ] Add a discovery source type for GitHub release or changelog discovery.
+- [ ] The initial GitHub discovery implementation supports releases only.
 - [ ] GitHub discovery requires explicit repo or organisation configuration plus a bounded time window and per-run result cap.
 - [ ] GitHub results enter the same enrichment, dedupe, and ranking pipeline as other candidates.
 - [ ] Add tests covering config parsing, source bounds, and result cap enforcement.
@@ -138,13 +144,18 @@ This feature introduces a phased improvement plan that prioritises digest qualit
 - FR-8: The system must validate Claude ranking output strictly, including score ranges, bucket values, and candidate coverage.
 - FR-9: The system must summarise only the top-ranked unique stories within a configured cap.
 - FR-10: The system must emit a machine-readable run report for each digest run.
-- FR-11: The system must mark runs as degraded when configured source failure, extraction failure, or validation failure thresholds are exceeded.
-- FR-12: The system must support two source modes: `monitored` and `discovery`.
-- FR-13: Every discovery source must define explicit bounds including a time window and result cap.
-- FR-14: The initial discovery implementation must support YouTube recent search.
-- FR-15: The initial discovery implementation must support GitHub releases or changelog discovery.
-- FR-16: The system must enforce digest-level candidate budgets, including maximum raw candidates, maximum full-text fetches, and maximum ranked candidates for Claude.
-- FR-17: The system must remain compatible with the existing multi-digest config model.
+- FR-11: The system must calculate a source-health percentage for each run based on the percentage of configured sources that completed successfully.
+- FR-12: The system must assign a run-health letter grade using a simple `A-F` scale derived from the source-health percentage.
+- FR-13: Source-health must map to grades as follows: `A` for `>90%`, `B` for `>80%`, `C` for `>70%`, `D` for `>60%`, `E` for `>50%`, and `F` for `<=50%`.
+- FR-14: A run with grade `A` must be treated as not degraded.
+- FR-15: Run health grade must be derived from source-health percentage only in the initial implementation.
+- FR-16: The digest frontmatter must include visible run-health metrics so a reader can see run quality without checking logs.
+- FR-17: The system must support two source modes: `monitored` and `discovery`.
+- FR-18: Every discovery source must define explicit bounds including a time window and result cap.
+- FR-19: The initial discovery implementation must support YouTube recent search.
+- FR-20: The initial GitHub discovery implementation must support releases only.
+- FR-21: The system must enforce digest-level candidate budgets, including maximum raw candidates, maximum full-text fetches, and maximum ranked candidates for Claude.
+- FR-22: The system must remain compatible with the existing multi-digest config model.
 
 ## Non-Goals
 
@@ -161,7 +172,8 @@ This feature introduces a phased improvement plan that prioritises digest qualit
 - Preserve the current mental model that monitored sources are the trusted backbone and discovery sources are bounded supplements.
 - Keep source configuration readable in YAML and explicit enough that a maintainer can understand why a discovery source is bounded.
 - Prefer clear naming such as `mode`, `lookbackHours`, `maxResultsPerQuery`, and `candidateBudgets` over ambiguous generic fields.
-- If degraded-run information is shown in the markdown digest, it should be short and factual rather than noisy.
+- Degraded-run information should be visible in digest frontmatter because logs are unlikely to be inspected during normal use.
+- Near-duplicate matching should be mildly aggressive: strong enough to collapse obvious duplicate coverage, but conservative enough to avoid merging distinct stories with similar vendor or product names.
 
 ## Technical Considerations
 
@@ -172,20 +184,18 @@ This feature introduces a phased improvement plan that prioritises digest qualit
 - Claude integration already exists through a CLI adapter; stricter response validation should be added around this boundary.
 - Article extraction should fail safely and record fallback reasons rather than terminating the entire digest by default.
 - The implementation should continue following the repository's TDD requirement: failing test first, minimum implementation, then refactor.
+- Run-health grading should use simple percentage-based thresholds rather than complex heuristics in the initial implementation.
+- The only input to run-health grading in the initial implementation should be source-health percentage.
 
 ## Success Metrics
 
 - Balanced quality scorecard: duplicate stories in a digest are reduced compared with the current implementation.
 - Balanced quality scorecard: a higher proportion of surfaced items are judged practically useful after one week of use.
 - Balanced quality scorecard: monitored plus discovery coverage surfaces useful items that were not present in the monitored-source-only run.
-- Balanced quality scorecard: degraded runs are clearly identifiable from logs and run reports, with no silent item loss from malformed Claude output.
+- Balanced quality scorecard: degraded runs are clearly identifiable from digest frontmatter, logs, and run reports, with no silent item loss from malformed Claude output.
 - At least one bounded YouTube discovery source and one bounded GitHub discovery source can be configured and run successfully.
 - Per-run candidate and enrichment caps are enforced consistently in tests and manual verification.
 
 ## Open Questions
 
-- What exact thresholds should mark a run as degraded, such as percentage of monitored-source failures or extraction failure rate?
-- How aggressive should near-duplicate title matching be before it risks collapsing distinct stories?
-- Should GitHub discovery cover only releases at first, or also issue announcements and changelog pages when easily available?
-- Should degraded-run status appear only in logs and run reports, or also inside digest frontmatter/body by default?
 - When personalisation is later introduced, should it live in a simple JSON feedback file, CLI workflow, or both?
