@@ -3,6 +3,10 @@ import type { ClaudeAdapter } from './claude';
 import { buildCandidate, buildSummaryPrompt, gradeRunHealth, parseSummaryResponse, type RankedCandidate } from './pipeline';
 import type { DigestContent, FilterResult } from './types';
 
+function buildSummaryRepairPrompt(previousResponse: string, digestConfig: DigestConfig): string {
+  return `Your previous response was not valid JSON for the ${digestConfig.name} summary step. Convert it into ONLY a valid JSON object with exactly these top-level keys: readInFull, highSignal, worthKnowing, tags, related. Do not include markdown, frontmatter, prose, or code fences.\n\nPrevious response:\n${previousResponse}`;
+}
+
 function toRankedCandidates(input: RankedCandidate[] | FilterResult): RankedCandidate[] {
   if (Array.isArray(input)) return input;
   return [...input.highSignal, ...input.worthKnowing].map((candidate, index) => ({
@@ -69,15 +73,24 @@ export async function summariseItems(
     };
   }
 
-  const response = await claude(buildSummaryPrompt(rankedCandidates, recentDigests, digestConfig));
+  const initialResponse = await claude(buildSummaryPrompt(rankedCandidates, recentDigests, digestConfig));
   let parsed;
   try {
-    parsed = parseSummaryResponse(response, rankedCandidates, isStrictSummaryInput(rankedCandidatesOrFilterResult));
+    parsed = parseSummaryResponse(initialResponse, rankedCandidates, isStrictSummaryInput(rankedCandidatesOrFilterResult));
   } catch (error) {
     if (error instanceof Error && error.message.includes('invalid JSON')) {
-      throw new Error(`Failed to parse Claude summarise response as JSON: ${response.slice(0, 200)}`);
+      const repairedResponse = await claude(buildSummaryRepairPrompt(initialResponse, digestConfig));
+      try {
+        parsed = parseSummaryResponse(repairedResponse, rankedCandidates, isStrictSummaryInput(rankedCandidatesOrFilterResult));
+      } catch (repairError) {
+        if (repairError instanceof Error && repairError.message.includes('invalid JSON')) {
+          throw new Error(`Failed to parse Claude summarise response as JSON: ${initialResponse.slice(0, 200)}`);
+        }
+        throw repairError;
+      }
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   return {

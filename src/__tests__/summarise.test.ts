@@ -174,4 +174,40 @@ describe('summariseItems', () => {
       'Failed to parse Claude summarise response',
     );
   });
+
+  it('retries once with a JSON repair prompt when Claude returns markdown digest output', async () => {
+    const filterResult: FilterResult = {
+      highSignal: [makeItem('Test Item')],
+      worthKnowing: [],
+      filtered: [],
+    };
+    const markdownDigest = ['```markdown', '---', 'date: 2026-04-17', 'tags:', '  - tooling', '---', '# AI Digest', '```'].join('\n');
+    const claude = vi
+      .fn()
+      .mockResolvedValueOnce(markdownDigest)
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          readInFull: [],
+          highSignal: [
+            {
+              title: 'Test Item',
+              url: 'https://example.com/test-item',
+              source: 'Test Source',
+              summary: 'Useful summary.',
+              takeaway: 'Try it.',
+            },
+          ],
+          worthKnowing: [],
+          tags: ['tooling'],
+          related: [],
+        }),
+      );
+
+    const result = await summariseItems(filterResult, 3, [], DIGEST_CONFIG, claude);
+
+    expect(result.highSignal).toHaveLength(1);
+    expect(result.tags).toEqual(['tooling']);
+    expect(claude).toHaveBeenCalledTimes(2);
+    expect((claude.mock.calls[1]?.[0] as string)).toContain('Your previous response was not valid JSON');
+  });
 });
