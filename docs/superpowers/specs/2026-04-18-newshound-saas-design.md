@@ -19,7 +19,7 @@ A web app where users configure their own sources and define what "signal" means
 
 **Core differentiator:** user-defined categories with prompts. Not a fixed topic filter, not generic AI summarisation — each user defines the intelligence layer themselves.
 
-**Business model:** usage-based billing via Stripe metered billing. Users choose their Claude model (Haiku or Sonnet); the platform charges at cost plus a small platform margin. First 5 digests free; card required at signup to prevent free-tier abuse. No monthly minimum.
+**Business model:** usage-based billing via Stripe metered billing. Users choose their Claude model (Haiku or Sonnet); the platform charges at cost plus a 25% markup (configurable via env var, snapshotted per run). First 5 digests free; card required at signup to prevent free-tier abuse. No monthly minimum.
 
 ---
 
@@ -106,7 +106,8 @@ digests
   id            text PK
   user_id       text FK → users
   date          text      -- YYYY-MM-DD
-  UNIQUE (user_id, date)  -- prevents duplicate rows on cron double-fire
+  type          text      -- 'scheduled' | 'preview'
+  UNIQUE (user_id, date, type)  -- prevents duplicate rows per type per day
   status        text      -- pending | processing | sent | failed
   sources_scanned  integer
   items_surfaced   integer
@@ -156,10 +157,17 @@ Template prompts are offered during onboarding to lower the barrier for non-tech
 
 The Digest Processor Worker receives `{ userId, digestId, date }` from the queue. The digest row already exists in D1 with `status = 'pending'` (created by the cron handler).
 
-**Idempotency guard:** at the start of processing, read the digest row. If `status = 'sent'`, return immediately — a previous retry already succeeded. This is the single guard against duplicate sends.
+**Atomic claim:** the first action is an atomic status transition:
 
-1. Read digest row; if `status = 'sent'` → exit (already done)
-2. Update digest row to `status = 'processing'`
+```sql
+UPDATE digests SET status = 'processing'
+WHERE id = ? AND status = 'pending'
+```
+
+If 0 rows are affected, another worker already claimed this digest (concurrent delivery or retry after success) — exit immediately. This prevents duplicate sends even under concurrent queue delivery.
+
+1. Attempt atomic claim: `UPDATE ... WHERE status = 'pending'` → if 0 rows affected, exit
+2. (Row is now owned exclusively by this worker)
 3. Load user config (sources, categories, model) from D1
 4. Fetch all sources concurrently — RSS/Atom, Reddit JSON, HN Algolia
 5. Failed sources: skip, record warning, continue. If all sources fail: abort, mark `failed`, no charge.
@@ -188,18 +196,21 @@ After step 5 the user is active. First digest arrives the next morning at 06:00 
 
 ## Preview Endpoint
 
-`POST /digest/preview` runs the full pipeline for the authenticated user on demand — no email sent, returns rendered HTML. Used for testing configuration before the first scheduled digest.
+`POST /digest/preview` runs the full pipeline for the authenticated user on demand — no email sent, returns rendered HTML. Used for testing configuration once a user is on paid billing.
 
-**Abuse controls:**
-- Rate-limited to 3 requests per user per 24-hour window (enforced in the API Worker via D1 counter)
-- Billed identically to a scheduled digest — `usage_records` row written, Stripe usage reported
-- Does not increment `users.digests_sent` (does not consume a free digest)
+**Access:** only available to users with `digests_sent >= 5` (i.e., past the free tier and actively billing). Free-tier users are not eligible — they use the scheduled digest to evaluate the product.
+
+**Accounting:** creates a `digests` row with `type = 'preview'` (excluded from history view and from `digests_sent` count). `usage_records` row is written and Stripe usage is reported, same as a scheduled digest. This satisfies the billing invariant: a user is never charged for a digest they did not receive, and previews are a deliberate on-demand run by a paying user who chose to trigger it.
+
+**Rate limit:** 3 preview requests per user per 24-hour window, enforced in the API Worker.
 
 ---
 
 ## Data Retention
 
-A cleanup handler runs daily (attached to the same cron trigger as the fan-out). It deletes `digests` rows (and their associated `usage_records`) where `created_at < now - 90 days`. `content_html` is the large payload; removing old rows keeps D1 storage bounded.
+A cleanup handler runs daily (attached to the same cron trigger as the fan-out). It deletes `digests` rows and associated `usage_records` where `created_at < now - 90 days`, **except** any `usage_records` row where `stripe_reported = false`. Unreconciled billing records are never deleted; their presence after 90 days is treated as an ops alert (logged to Cloudflare's observability tooling for manual investigation).
+
+After cleanup, `content_html` in old digest rows is the main storage driver — removing eligible rows keeps D1 bounded.
 
 ---
 
@@ -211,7 +222,7 @@ A cleanup handler runs daily (attached to the same cron trigger as the fan-out).
 | All sources fail | Abort digest. Mark `failed`. No email, no charge. |
 | Claude API fails | Retry once. On second failure: abort, mark `failed`, no charge. |
 | Email delivery fails | Retry once. On second failure: abort, mark `failed`. Do not charge. |
-| Queue message fails × 3 | CF Queues moves to dead-letter queue. Digest marked `failed`. No silent losses. |
+| Worker crashes mid-pipeline | Consumer catches all terminal errors and marks digest `failed` directly before rethrowing. Stale-processing cleanup (separate cron step) marks any digest stuck in `processing` for > 2 hours as `failed` — safety net for unhandled crashes. |
 | Stripe reporting fails | `stripe_reported = false` in `usage_records`. Cleanup job retries. Non-blocking. |
 | Duplicate queue delivery | Idempotency guard at pipeline start: if `status = 'sent'`, exit immediately. |
 
@@ -221,7 +232,10 @@ A cleanup handler runs daily (attached to the same cron trigger as the fan-out).
 
 **Unit tests (Vitest):** Pure functions — fetchers, prompt builders, renderer, cost calculator. External dependencies (Claude SDK, Resend, Stripe) are mocked. Ported and extended from newshound's existing test suite.
 
-**Integration tests:** Digest Processor Worker end-to-end using Cloudflare's local Miniflare environment with a real D1 instance. External API calls mocked. Verifies the full pipeline from queue message to digest row marked `sent`. Includes an idempotency test: run the processor twice with the same message, assert only one `usage_records` row and one Resend call.
+**Integration tests:** Digest Processor Worker end-to-end using Cloudflare's local Miniflare environment with a real D1 instance. External API calls mocked. Verifies the full pipeline from queue message to digest row marked `sent`. Includes:
+- Idempotency test: deliver the same message twice concurrently, assert only one `usage_records` row and one Resend call
+- Concurrent claim test: two worker invocations race on the same `pending` digest; assert exactly one proceeds and the other exits at the atomic claim step
+- Stale-processing test: insert a digest row stuck in `processing` for 3 hours, run the cleanup handler, assert it is marked `failed`
 
 **Manual smoke test:** `POST /digest/preview` — runs the full pipeline on demand, no email sent, returns rendered HTML.
 
@@ -229,6 +243,5 @@ A cleanup handler runs daily (attached to the same cron trigger as the fan-out).
 
 ## Open Questions
 
-- Markup percentage on LLM costs (e.g. 20–30% over API cost)?
 - Landing page / marketing site, or just a signup wall?
 - Digest history UI: plain list of past digests, or searchable?
