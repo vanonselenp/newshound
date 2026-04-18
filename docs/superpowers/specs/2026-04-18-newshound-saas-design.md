@@ -39,19 +39,19 @@ This spec covers the product built as a new private repository. The existing new
 
 ## Architecture
 
-### Four components
+### Components
 
 **1. UI — Cloudflare Pages + React + Vite**
 The user-facing web app. Handles source configuration, category management, model selection, digest history, and account/billing. Communicates with the API Worker via `fetch()`. Auth via Clerk (JWT passed in request headers).
 
 **2. API Worker — Cloudflare Workers + Hono**
-The synchronous HTTP API. Validates Clerk JWTs, handles all CRUD operations on user data, enqueues digest jobs, serves usage data, and handles Stripe webhooks. Never calls Claude directly — all LLM work is async via the queue.
+The synchronous HTTP API. Validates Clerk JWTs, handles all CRUD operations on user data, enqueues digest jobs, serves usage data, and handles Stripe webhooks. Never calls Claude directly — all LLM work is async via the queue. Also hosts the cron handler (see below).
 
 **3. Digest Processor Worker — Cloudflare Workers + Queue consumer**
 Consumes one queue message per user per day. Runs the full pipeline: fetch sources → filter + assign via Claude → summarise via Claude → render HTML email → send via Resend → record usage → report to Stripe. Isolated from the API so a slow or failing digest for one user has no effect on others.
 
 **4. Cron Handler — part of the API Worker**
-A cron trigger attached to the API Worker (not a separate deployment). Fires at 06:00 UTC. Queries D1 for all active users. Enqueues one `{ userId, date }` message per user. Exits. No LLM calls, no email sending — fan-out only.
+A cron trigger attached to the API Worker (not a separate deployment). Fires at 06:00 UTC. For each active user, inserts a `digests` row with `status = 'pending'` (using `INSERT OR IGNORE` with a `UNIQUE (user_id, date)` constraint to prevent duplicates on accidental double-fire), then enqueues `{ userId, digestId, date }`. The digest ID is in the queue message so the processor always operates on a pre-existing row.
 
 ### Infrastructure
 
@@ -79,7 +79,7 @@ users
   stripe_id     text      -- Stripe customer ID, set at signup
   model         text      -- 'claude-haiku-3' | 'claude-sonnet-4-5'
   active        boolean   -- false = paused, excluded from cron
-  digests_sent  integer   -- lifetime count; free tier ends at 5
+  digests_sent  integer   -- lifetime count; free tier active when < 5
   created_at    text
 
 sources
@@ -106,6 +106,7 @@ digests
   id            text PK
   user_id       text FK → users
   date          text      -- YYYY-MM-DD
+  UNIQUE (user_id, date)  -- prevents duplicate rows on cron double-fire
   status        text      -- pending | processing | sent | failed
   sources_scanned  integer
   items_surfaced   integer
@@ -113,7 +114,9 @@ digests
   model_used    text
   tokens_input  integer
   tokens_output integer
-  cost_usd      real
+  api_cost_usd  real      -- raw Anthropic API cost at time of run
+  amount_billed_usd real  -- api_cost_usd * (1 + markup); what Stripe charges
+  markup_pct    real      -- markup percentage applied, snapshotted at run time
   content_html  text      -- stored for digest history view
   error_message text      -- set on failure
   sent_at       text
@@ -126,10 +129,14 @@ usage_records
   tokens_input  integer
   tokens_output integer
   model         text
-  cost_usd      real
+  api_cost_usd  real
+  amount_billed_usd real
+  markup_pct    real
   stripe_reported  boolean
   created_at    text
 ```
+
+**Billing reconciliation:** `api_cost_usd`, `amount_billed_usd`, and `markup_pct` are all stored at run time. If Anthropic pricing or the platform markup changes, past records remain accurate and reconcilable.
 
 ---
 
@@ -147,18 +154,23 @@ Template prompts are offered during onboarding to lower the barrier for non-tech
 
 ## Digest Pipeline (per user)
 
-1. Load user config (sources, categories, model) from D1
-2. Mark digest row as `processing`
-3. Fetch all sources concurrently — RSS/Atom, Reddit JSON, HN Algolia
-4. Failed sources: skip, record warning, continue. If all sources fail: abort, mark `failed`, no charge.
-5. **Filter + assign pass** — one Claude API call. Input: all items + user's category definitions. Output: `{ category, item_index, signal: 'include' | 'discard' }` per item.
-6. **Summarise pass** — one Claude API call. Input: included items grouped by category. Output: structured summaries per category.
-7. Render HTML email — one section per category, item count footer
-8. Send via Resend. On failure: retry once. If still failing: abort, mark `failed`. Do not charge for undelivered digests.
-9. Store `content_html` in D1
-10. Write to `usage_records`
-11. Report usage to Stripe metered billing (non-blocking — log and retry on failure, do not abort digest)
-12. Mark digest `sent`
+The Digest Processor Worker receives `{ userId, digestId, date }` from the queue. The digest row already exists in D1 with `status = 'pending'` (created by the cron handler).
+
+**Idempotency guard:** at the start of processing, read the digest row. If `status = 'sent'`, return immediately — a previous retry already succeeded. This is the single guard against duplicate sends.
+
+1. Read digest row; if `status = 'sent'` → exit (already done)
+2. Update digest row to `status = 'processing'`
+3. Load user config (sources, categories, model) from D1
+4. Fetch all sources concurrently — RSS/Atom, Reddit JSON, HN Algolia
+5. Failed sources: skip, record warning, continue. If all sources fail: abort, mark `failed`, no charge.
+6. **Filter + assign pass** — one Claude API call. Input: all items + user's category definitions. Output: `{ category, item_index, signal: 'include' | 'discard' }` per item.
+7. **Summarise pass** — one Claude API call. Input: included items grouped by category. Output: structured summaries per category.
+8. Render HTML email — one section per category, item count footer
+9. Send via Resend using `digestId` as the idempotency key. On failure: retry once. If still failing: abort, mark `failed`. Do not charge.
+10. **Persist atomically:** write `content_html`, `tokens_*`, `api_cost_usd`, `amount_billed_usd`, `markup_pct`, and `status = 'sent'` to the digest row in a single UPDATE. Write `usage_records` row. Increment `users.digests_sent`.
+11. Report usage to Stripe metered billing (non-blocking — sets `stripe_reported = true` on success, retried by a separate cleanup job on failure)
+
+**Invariant:** a user is never charged for a digest they did not receive. Steps 9 and 10 are sequenced so that the status is only set to `sent` after the email is confirmed delivered and all records are persisted.
 
 ---
 
@@ -168,9 +180,26 @@ Template prompts are offered during onboarding to lower the barrier for non-tech
 2. **Add sources** — RSS URL, subreddit, or HN keywords. At least one required. Curated defaults offered.
 3. **Add categories** — name + prompt per category. Template prompts offered. Default used if none added.
 4. **Choose model** — Haiku (fast, cheap) or Sonnet (smarter). Shown with estimated cost per digest.
-5. **Add card** — Stripe Checkout. Required before activation. First 5 digests free, then metered billing.
+5. **Add card** — Stripe Checkout. Required before activation. First 5 digests free (`users.digests_sent < 5`), then metered billing.
 
 After step 5 the user is active. First digest arrives the next morning at 06:00 UTC. A Resend confirmation email is sent immediately confirming the schedule.
+
+---
+
+## Preview Endpoint
+
+`POST /digest/preview` runs the full pipeline for the authenticated user on demand — no email sent, returns rendered HTML. Used for testing configuration before the first scheduled digest.
+
+**Abuse controls:**
+- Rate-limited to 3 requests per user per 24-hour window (enforced in the API Worker via D1 counter)
+- Billed identically to a scheduled digest — `usage_records` row written, Stripe usage reported
+- Does not increment `users.digests_sent` (does not consume a free digest)
+
+---
+
+## Data Retention
+
+A cleanup handler runs daily (attached to the same cron trigger as the fan-out). It deletes `digests` rows (and their associated `usage_records`) where `created_at < now - 90 days`. `content_html` is the large payload; removing old rows keeps D1 storage bounded.
 
 ---
 
@@ -183,9 +212,8 @@ After step 5 the user is active. First digest arrives the next morning at 06:00 
 | Claude API fails | Retry once. On second failure: abort, mark `failed`, no charge. |
 | Email delivery fails | Retry once. On second failure: abort, mark `failed`. Do not charge. |
 | Queue message fails × 3 | CF Queues moves to dead-letter queue. Digest marked `failed`. No silent losses. |
-| Stripe reporting fails | Log to `usage_records.stripe_reported = false`. Retry on next run. Non-blocking. |
-
-**Invariant:** a user is never charged for a digest they did not receive.
+| Stripe reporting fails | `stripe_reported = false` in `usage_records`. Cleanup job retries. Non-blocking. |
+| Duplicate queue delivery | Idempotency guard at pipeline start: if `status = 'sent'`, exit immediately. |
 
 ---
 
@@ -193,9 +221,9 @@ After step 5 the user is active. First digest arrives the next morning at 06:00 
 
 **Unit tests (Vitest):** Pure functions — fetchers, prompt builders, renderer, cost calculator. External dependencies (Claude SDK, Resend, Stripe) are mocked. Ported and extended from newshound's existing test suite.
 
-**Integration tests:** Digest Processor Worker end-to-end using Cloudflare's local Miniflare environment with a real D1 instance. External API calls mocked. Verifies the full pipeline from queue message to digest row marked `sent`.
+**Integration tests:** Digest Processor Worker end-to-end using Cloudflare's local Miniflare environment with a real D1 instance. External API calls mocked. Verifies the full pipeline from queue message to digest row marked `sent`. Includes an idempotency test: run the processor twice with the same message, assert only one `usage_records` row and one Resend call.
 
-**Manual smoke test:** `POST /digest/preview` API endpoint. Runs the full pipeline for the authenticated user on demand — no email sent, returns rendered HTML. Used during local development and for manual QA.
+**Manual smoke test:** `POST /digest/preview` — runs the full pipeline on demand, no email sent, returns rendered HTML.
 
 ---
 
