@@ -72,4 +72,22 @@ describe('createClaudeAdapter', () => {
     const adapter = createClaudeAdapter(mockSpawn as never);
     await expect(adapter('prompt')).rejects.toThrow('code 2');
   });
+
+  it('rejects with timeout error when process hangs', async () => {
+    const proc = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+      stdin: { write: () => void; end: () => void };
+      kill: () => void;
+    };
+    proc.stdout = new EventEmitter();
+    proc.stderr = new EventEmitter();
+    proc.stdin = { write: vi.fn(), end: vi.fn() };
+    proc.kill = vi.fn();
+    // Never emits 'close' — simulates a hung process
+
+    const mockSpawn = vi.fn().mockReturnValue(proc);
+    const adapter = createClaudeAdapter(mockSpawn as never, 50);
+    await expect(adapter('prompt')).rejects.toThrow('timed out after 50ms');
+  });
 });
